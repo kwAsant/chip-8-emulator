@@ -59,7 +59,9 @@ As a "machine", CHIP-8 has the following components:
 - **64x32 Monochrome Display memory**
     - A memory buffer used for storing the graphics to display.
         - 64 pixels wide and 32 pixels high.
-
+        - The draw instruction iterates over each pixel in a sprite and XORs the sprite pixel and the display pixel.
+        - 
+- 
 ## What is an emulator?
 
 An emulator is a software that reads original machine code instructions assembled for the target machine, _interprets_ them, and then replicates the functionality of the target machine on the host machine.
