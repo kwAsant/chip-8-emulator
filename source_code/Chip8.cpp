@@ -6,83 +6,12 @@
  * @version 1.0
  */
 
+#include "Chip8.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <chrono>
 #include <random>
-
-// CHIP-8 Emulator Class Definition
-// This class represents the state of a Chip8 emulator, including its registers, memory, timers, and display.
-class Chip8 {
-    public:
-        Chip8(); // Constructor to initialize the Chip8 system
-        void loadROM(const char* filename); // Load a ROM file into memory
-    private:
-        void Table0(); // Handle opcodes starting with 0
-        void Table8(); // Handle opcodes starting with 8
-        void TableE(); // Handle opcodes starting with E
-        void TableF(); // Handle opcodes starting with F
-
-        void OP_NULL(); // Placeholder for unimplemented opcodes
-        void OP_00E0(); // Clear the display
-        void OP_00EE(); // Return from subroutine
-        void OP_1nnn(); // Jump to address NNN
-        void OP_2nnn(); // Call subroutine at NNN
-        void OP_3xkk(); // Skip next instruction if VX equals kk
-        void OP_4xkk(); // Skip next instruction if VX doesn't equal kk
-        void OP_5xy0(); // Skip next instruction if VX equals VY
-        void OP_6xkk(); // Set VX to kk
-        void OP_7xkk(); // Add kk to VX
-        void OP_8xy0(); // Set VX to the value of VY
-        void OP_8xy1(); // Set VX to VX OR VY
-        void OP_8xy2(); // Set VX to VX AND VY
-        void OP_8xy3(); // Set VX to VX XOR VY
-        void OP_8xy4(); // Set VX = VX + VY, set VF = carry
-        void OP_8xy5(); // Set VX = VX - VY, set VF = NOT borrow
-        void OP_8xy6(); // Set VX = VX SHR 1
-        void OP_8xy7(); // Set VX = VY - VX, set VF = NOT borrow
-        void OP_8xyE(); // Set VX = VX SHL 1
-        void OP_9xy0(); // Skip next instruction if VX doesn't equal VY
-        void OP_Annn(); // Set index register to address NNN
-        void OP_Bnnn(); // Jump to address NNN + V0
-        void OP_Cxkk(); // Set VX = random byte AND kk
-        void OP_Dxyn(); // Display n-byte sprite starting at memory location index at (VX, VY), set VF = collision
-        void OP_Ex9E(); // Skip next instruction if key with the value of VX is pressed
-        void OP_ExA1(); // Skip next instruction if key with the value of VX is not pressed
-        void OP_Fx07(); // Set VX = delay timer value
-        void OP_Fx0A(); // Wait for a key press, store the value of the key in VX
-        void OP_Fx15(); // Set delay timer = VX
-        void OP_Fx18(); // Set sound timer = VX
-        void OP_Fx1E(); // Set index = index + VX
-        void OP_Fx29(); // Set index = location of sprite for digit VX
-        void OP_Fx33(); // Store BCD representation of VX in memory locations index, index+1, and index+2
-        void OP_Fx55(); // Store registers V0 through VX in memory starting at location index
-        void OP_Fx65(); // Read registers V0 through VX from memory starting at location index
-
-        uint8_t registers[16]{};                         // 16 8-bit registers
-        uint8_t memory[4096]{};                          // 4096 bytes of memory
-        uint16_t index{};                                // 16-bit index register
-        uint16_t pc{};                                   // 16-bit program counter
-        uint16_t stack[16]{};                            // 16 level stack
-        uint8_t sp{};                                    // stack pointer
-        uint8_t delayTimer{};                            // 8-bit delay timer
-        uint8_t soundTimer{};                            // 8-bit sound timer
-        uint8_t keypad[16]{};                            // 16 keys on the keypad
-        uint32_t display[64 * 32]{};                     // 64x32 monochrome display memory
-        uint16_t opcode{};                               // Current opcode
-
-        std::default_random_engine randGen;              // Random number generator
-        std::uniform_int_distribution<uint8_t> randByte; // Distribution to generate random bytes
-
-
-        typedef void (Chip8::*Chip8Func)();
-        Chip8Func table[0xF + 1]; // the first digits of the opcode go from $0 to $F
-        Chip8Func table0[0xE + 1]; // $0 need an array that can index up to $E+1
-        Chip8Func table8[0xE + 1]; // $8 need an array that can index up to $E+1
-        Chip8Func tableE[0xE + 1]; // $E need an array that can index up to $E+1
-        Chip8Func tableF[0x65 + 1]; // $F need an array that can index up to $65+1
-    };
 
 // declare constants for CHIP-8
 const unsigned int START_ADDRESS = 0x200; // Start address for CHIP-8 programs (first instruction is stored here)
@@ -241,6 +170,40 @@ void Chip8::loadROM(const char* filename) {
 }
 
 // =======================================================================================
+// IMPLEMENTATION OF FETCH-DECODE-EXECUTE CYCLE WILL BE DONE IN THE NEXT PHASE
+// =======================================================================================
+void Chip8::Cycle()
+{
+    /**
+     * @note Fetch
+     * CHIP-8 opcodes are 2 bytes long, and are stored in big-endian format (MSB comes
+     * first in memory, followed by LSB). The program counter (pc) points to the current
+     * instruction in memory. To fetch the opcode, we read two consecutive bytes from
+     * memory.
+     */
+    opcode = (memory[pc] << 8u) | memory[pc + 1]; // combine two bytes to form the opcode
+    pc += 2; // increment the program counter to point to the next instruction
+
+    /**
+     * @note Decode and Execute
+     * The first nibble (4 bits) of the opcode determines the type of instruction.
+     * We use this nibble to index into a function pointer table (table) to find
+     * the corresponding member function that implements the instruction.
+     * We then call this function to execute the instruction.
+     */
+    ((*this).*(table[(opcode & 0xF000u) >> 12u]))(); // decode and execute the opcode
+
+    // decrement timers if they are set
+    if (delayTimer > 0) {
+        --delayTimer;
+    }
+
+    if (soundTimer > 0) {
+        --soundTimer;
+    }
+}
+
+// =======================================================================================
 // THE INSTRUCTIONS FOR THE CHIP-8 EMULATOR WILL BE IMPLEMENTED IN THE NEXT PHASE
 // Modern ISAs do (e.g. JMP, MOV, ADD), but CHIP-8 was:
 //  • Designed in the 1970s
@@ -363,3 +326,339 @@ void Chip8::OP_8xy0() {
     registers[Vx] = registers[Vy]; // set VX to the value of VY
 }
 
+/**
+ * @brief Instruction 8xy1: Sets VX to VX OR VY.
+ * Performs a bitwise OR operation between the values in registers VX and VY, storing the result in VX.
+ */
+void Chip8::OP_8xy1() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    registers[Vx] |= registers[Vy]; // set VX to VX OR VY
+}
+
+/**
+ * @brief Instruction 8xy2: Sets VX to VX AND VY.
+ * Performs a bitwise AND operation between the values in registers VX and VY, storing the result in VX.
+ */
+void Chip8::OP_8xy2() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    registers[Vx] &= registers[Vy]; // set VX to VX AND VY
+}
+
+/**
+ * @brief Instruction 8xy3: Sets VX to VX XOR VY.
+ * Performs a bitwise XOR operation between the values in registers VX and VY, storing the result in VX.
+ */
+void Chip8::OP_8xy3() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    registers[Vx] ^= registers[Vy]; // set VX to VX XOR VY
+}
+
+/**
+ * @brief Instruction 8xy4: Sets VX = VX + VY, set VF = carry.
+ * Adds the values in registers VX and VY, storing the result in VX.
+ * If there is a carry (i.e., the result exceeds 255), sets register VF to 1; otherwise, sets VF to 0.
+ */
+void Chip8::OP_8xy4() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    uint16_t sum = registers[Vx] + registers[Vy]; // use uint16_t to detect overflow
+
+    if (sum > 255u) {
+        registers[0xF] = 1; // set VF to 1 if there is a carry
+    } else {
+        registers[0xF] = 0; // set VF to 0 if there is no carry
+    }
+
+    registers[Vx] = sum & 0xFFu; // store the least significant 8 bits of the sum in VX
+}
+
+/**
+ * @brief Instruction 8xy5: Sets VX = VX - VY, set VF = NOT borrow.
+ * Subtracts the value in register VY from the value in register VX, storing the result in VX.
+ * If VX is greater than or equal to VY, sets register VF to 1; otherwise, sets VF to 0.
+ */
+void Chip8::OP_8xy5() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    if (registers[Vx] > registers[Vy]) {
+        registers[0xF] = 1; // set VF to 1 if no borrow
+    } else {
+        registers[0xF] = 0; // set VF to 0 if there is a borrow
+    }
+
+    registers[Vx] -= registers[Vy]; // subtract VY from VX
+}
+
+/**
+ * @brief Instruction 8xy6: Sets VX = VX SHR 1.
+ * Shifts the value in register VX to the right by 1 bit.
+ * The least significant bit (LSB) of VX before the shift is stored in register VF.
+ */
+void Chip8::OP_8xy6() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    registers[0xF] = registers[Vx] & 0x1u; // store the LSB of VX in VF
+    registers[Vx] >>= 1; // shift VX to the right by 1 bit
+}
+
+/**
+ * @brief Instruction 8xy7: Sets VX = VY - VX, set VF = NOT borrow.
+ * Subtracts the value in register VX from the value in register VY, storing the result in VX.
+ * If VY is greater than or equal to VX, sets register VF to 1; otherwise, sets VF to 0.
+ */
+void Chip8::OP_8xy7() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    if (registers[Vy] > registers[Vx]) {
+        registers[0xF] = 1; // set VF to 1 if no borrow
+    } else {
+        registers[0xF] = 0; // set VF to 0 if there is a borrow
+    }
+
+    registers[Vx] = registers[Vy] - registers[Vx]; // subtract VX from VY and store in VX
+}
+
+/**
+ * @brief Instruction 8xyE: Sets VX = VX SHL 1.
+ * Shifts the value in register VX to the left by 1 bit.
+ * The most significant bit (MSB) of VX before the shift is stored in register VF.
+ */
+void Chip8::OP_8xyE() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    registers[0xF] = (registers[Vx] & 0x80u) >> 7u; // store the MSB of VX in VF
+    registers[Vx] <<= 1; // shift VX to the left by 1 bit
+}
+
+/**
+ * @brief Instruction 9xy0: Skips the next instruction if VX doesn't equal VY.
+ * Compares the values in registers VX and VY.
+ * If they are not equal, increments the program counter by 2 to skip the next instruction.
+ */
+void Chip8::OP_9xy0() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+
+    if (registers[Vx] != registers[Vy]) {
+        pc += 2; // skip next instruction
+    }
+}
+
+/**
+ * @brief Instruction Annn: Sets index to address NNN.
+ * Loads the address NNN into the index register.
+ */
+void Chip8::OP_Annn() {
+    uint16_t address = opcode & 0x0FFFu; // extract NNN from opcode
+
+    index = address; // set index to address NNN
+}
+
+/**
+ * @brief Instruction Bnnn: Jumps to address NNN + V0.
+ * Sets the program counter to the address NNN plus the value in register V0.
+ */
+void Chip8::OP_Bnnn() {
+    uint16_t address = opcode & 0x0FFFu; // extract NNN from opcode
+
+    pc = registers[0x0] + address; // set program counter to NNN + V0
+}
+
+/**
+ * @brief Instruction Cxkk: Sets VX = random byte AND kk.
+ * Generates a random byte, performs a bitwise AND with the immediate value kk, and stores the result in register VX.
+ */
+void Chip8::OP_Cxkk() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t byte = opcode & 0x00FFu; // extract kk from opcode
+
+    registers[Vx] = randByte(randGen) & byte; // set VX to random byte AND kk
+}
+
+/**
+ * @brief Instruction Dxyn: Displays n-byte sprite starting at memory location index at (VX, VY), set VF = collision.
+ *      **A collision occurs if drawing a sprite causes any pixel that was already ON to be turned OFF.**
+ * Draws a sprite at the coordinates (VX, VY) on the display.
+ * The sprite is n bytes long and is located in memory starting at the address stored in the index register.
+ * If any pixels are flipped from set to unset during the drawing process, sets register VF to 1; otherwise, sets VF to 0.
+ */
+void Chip8::OP_Dxyn() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+    uint8_t height = opcode & 0x000Fu; // extract N from opcode
+
+    uint8_t xPos = registers[Vx] % 64; // wrap around if xPos > 63 (screen width)
+    uint8_t yPos = registers[Vy] % 32; // wrap around if yPos > 31 (screen height)
+
+    registers[0xF] = 0; // reset VF (collision flag)
+
+    for (unsigned int row = 0; row < height; ++row) {
+        uint8_t spriteByte = memory[index + row]; // get the sprite byte from memory
+
+        for (unsigned int col = 0; col < 8; ++col) {
+            uint8_t spritePixel = spriteByte & (0x80u >> col); // extract the pixel from the sprite byte
+            uint32_t* screenPixel = &display[(yPos + row) * 64 + (xPos + col)];
+
+            if (spritePixel) { // if the pixel is set
+
+                if (*screenPixel == 0xFFFFFFFF) { // if the screen pixel is already set
+                    registers[0xF] = 1; // set VF to indicate a collision
+                }
+
+                *screenPixel ^= 0xFFFFFFFF; // toggle the pixel on the screen
+            }
+        }
+    }
+}
+
+/**
+ * @brief Instruction Ex9E: Skips the next instruction if key with the value of VX is pressed.
+ * Checks if the key corresponding to the value in register VX is currently pressed.
+ * If the key is pressed, increments the program counter by 2 to skip the next instruction.
+ */
+void Chip8::OP_Ex9E() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t key = registers[Vx];
+
+    if (keypad[key]) { // if the key is pressed
+        pc += 2; // skip next instruction
+    }
+}
+
+/**
+ * @brief Instruction ExA1: Skips the next instruction if key with the value of VX is not pressed.
+ * Checks if the key corresponding to the value in register VX is currently not pressed.
+ * If the key is not pressed, increments the program counter by 2 to skip the next instruction.
+ */
+void Chip8::OP_ExA1() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t key = registers[Vx];
+
+    if (!keypad[key]) { // if the key is not pressed
+        pc += 2; // skip next instruction
+    }
+}
+
+/**
+ * @brief Instruction Fx07: Sets VX = delay timer value.
+ * Loads the current value of the delay timer into register VX.
+ */
+void Chip8::OP_Fx07() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    registers[Vx] = delayTimer; // set VX to delay timer value
+}
+
+/**
+ * @brief Instruction Fx0A: Waits for a key press, store the value of the key in VX.
+ * Pauses execution until a key is pressed.
+ * Once a key is pressed, stores the value of the key in register VX.
+ */
+void Chip8::OP_Fx0A() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    bool keyPressed = false;
+
+    // check if any key is pressed
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        if (keypad[i])
+        {
+            registers[Vx] = i;
+            keyPressed = true;
+            break;
+        }
+    }
+
+    if (!keyPressed)
+    {
+        pc -= 2; // repeat this instruction
+    }
+}
+
+/**
+ * @brief Instruction Fx15: Sets delay timer = VX.
+ * Sets the delay timer to the value in register VX.
+ */
+void Chip8::OP_Fx15() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    delayTimer = registers[Vx]; // set delay timer to VX
+}
+
+/**
+ * @brief Instruction Fx18: Sets sound timer = VX.
+ * Sets the sound timer to the value in register VX.
+ */
+void Chip8::OP_Fx18() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    soundTimer = registers[Vx]; // set sound timer to VX
+}
+
+/**
+ * @brief Instruction Fx1E: Sets index = index + VX.
+ * Adds the value in register VX to the index register.
+ */
+void Chip8::OP_Fx1E() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    index += registers[Vx]; // add VX to index
+}
+
+/**
+ * @brief Instruction Fx29: Sets index = location of sprite for digit VX.
+ * Sets the index register to the memory address of the sprite corresponding to the hexadecimal digit stored in register VX.
+ */
+void Chip8::OP_Fx29() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t digit = registers[Vx];
+
+    index = FONTSET_START_ADDRESS + (digit * 5); // set index to the address of the sprite for digit VX
+}
+
+/**
+ * @brief Instruction Fx33: Stores BCD representation of VX in memory locations index, index+1, and index+2.
+ * Converts the value in register VX to its binary-coded decimal (BCD) representation and stores it in memory.
+ * The hundreds digit is stored at the address in the index register, the tens digit at index + 1, and the units digit at index + 2.
+ */
+void Chip8::OP_Fx33() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t value = registers[Vx];
+
+    memory[index] = value / 100; // hundreds digit
+    memory[index + 1] = (value / 10) % 10; // tens digit
+    memory[index + 2] = value % 10; // units digit
+}
+
+/**
+ * @brief Instruction Fx55: Stores registers V0 through VX in memory starting at location index.
+ * Copies the values from registers V0 to VX into memory, starting at the address stored in the index register.
+ */
+void Chip8::OP_Fx55() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    for (uint8_t i = 0; i <= Vx; ++i) {
+        memory[index + i] = registers[i]; // store registers V0 to VX in memory
+    }
+}
+
+/**
+ * @brief Instruction Fx65: Reads registers V0 through VX from memory starting at location index.
+ * Copies values from memory into registers V0 to VX, starting at the address stored in the index register.
+ */
+void Chip8::OP_Fx65() {
+    uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+
+    for (uint8_t i = 0; i <= Vx; ++i) {
+        registers[i] = memory[index + i]; // read registers V0 to VX from memory
+    }
+}
