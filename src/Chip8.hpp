@@ -26,7 +26,7 @@ class Chip8
 public:
     Chip8();                            // Constructor to initialize the Chip8 system
     void loadROM(const char *filename); // Load a ROM file into memory
-    void Chip8::Cycle();                // Execute one cycle of the fetch-decode-execute loop
+    void Cycle();                // Execute one cycle of the fetch-decode-execute loop
 
     uint8_t keypad[KEYPAD_SIZE]{};        // 16 keys on the keypad
     uint32_t display[DISPLAY_WIDTH * DISPLAY_HEIGHT]{}; // 64x32 monochrome display memory
@@ -87,8 +87,8 @@ private:
 
     typedef void (Chip8::*Chip8Func)();
     Chip8Func table[0xF + 1];   // the first digits of the opcode go from $0 to $F
-    Chip8Func table0[0xE + 1];  // $0 need an array that can index up to $E+1
-    Chip8Func table8[0xE + 1];  // $8 need an array that can index up to $E+1
-    Chip8Func tableE[0xE + 1];  // $E need an array that can index up to $E+1
+    Chip8Func table0[0xE + 1];  // $0 need an array that can index up to $F+1
+    Chip8Func table8[0xE + 1];  // $8 need an array that can index up to $F+1
+    Chip8Func tableE[0xE + 1];  // $E need an array that can index up to $F+1
     Chip8Func tableF[0x65 + 1]; // $F need an array that can index up to $65+1
 };

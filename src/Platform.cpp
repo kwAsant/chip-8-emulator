@@ -17,14 +17,14 @@ std::unordered_map<SDL_Keycode, uint8_t> keyMap = {
     {SDLK_4, 0xC}, {SDLK_r, 0xD}, {SDLK_f, 0xE}, {SDLK_v, 0xF}};
 
 // constructor
-Platform(char const* title, int windowHeight, int windowWidth, int textureHeight, int textureWidth)
+Platform::Platform(char const *title, int windowWidth, int windowHeight, int textureWidth, int textureHeight)
 {
     SDL_Init(SDL_INIT_VIDEO); // Initialize SDL2 video subsystem
 
     // create window, renderer, and texture
     window = SDL_CreateWindow(title,
-                            0,
-                            0,
+                            SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED,
                             windowWidth,
                             windowHeight,
                             SDL_WINDOW_SHOWN);
@@ -38,7 +38,7 @@ Platform(char const* title, int windowHeight, int windowWidth, int textureHeight
     
 // destructor - runs automatically when object goes out of scope (is destroyed)
 // its job is to clean up resources
-~Platform()
+Platform::~Platform()
 {
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
@@ -46,7 +46,7 @@ Platform(char const* title, int windowHeight, int windowWidth, int textureHeight
     SDL_Quit();
 }
 
-void Update(void const* buffer, int pitch)
+void Platform::Update(void const* buffer, int pitch)
 {
     SDL_UpdateTexture(texture, nullptr, buffer, pitch);
     SDL_RenderClear(renderer);
@@ -54,7 +54,7 @@ void Update(void const* buffer, int pitch)
     SDL_RenderPresent(renderer);
 }
 
-bool ProcessInput(uint8_t* keys)
+bool Platform::ProcessInput(uint8_t* keys)
 {
     bool quit = false;
 

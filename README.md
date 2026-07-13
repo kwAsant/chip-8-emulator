@@ -69,3 +69,5 @@ An emulator is a software that reads original machine code instructions assemble
 
 Origin:
     - late 16th century: from Latin aemulat- ‘rivalled, equalled’, from the verb aemulari, from aemulus ‘rival’.
+
+

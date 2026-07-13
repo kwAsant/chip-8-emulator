@@ -7,6 +7,7 @@
  */
 
 #include "Chip8.hpp"
+#include <cstring>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -82,10 +83,11 @@ Chip8::Chip8()
     table[0xE] = &Chip8::TableE;
     table[0xF] = &Chip8::TableF;
 
-    for (size_t i = 0; i <= 0xE; i++) {
+    for (size_t i = 0; i < 0xE + 1; i++)
+    {
         table0[i] = &Chip8::OP_NULL;
         table8[i] = &Chip8::OP_NULL;
-        tableE[i] = &Chip8::OP_NULL;    
+        tableE[i] = &Chip8::OP_NULL;
     }
 
     table0[0x0] = &Chip8::OP_00E0;
@@ -104,7 +106,7 @@ Chip8::Chip8()
     tableE[0x1] = &Chip8::OP_ExA1;;
     tableE[0xE] = &Chip8::OP_Ex9E;
 
-    for (size_t i = 0; i <= 0x65; i++) {
+    for (size_t i = 0; i < 0x65 + 1; i++) {
         tableF[i] = &Chip8::OP_NULL;
     }
 
@@ -135,8 +137,10 @@ void Chip8::TableF() {
     ((*this).*(tableF[opcode & 0x00FFu]))(); // call the appropriate function based on the last byte
 }
 
-void Chip8::OP_NULL() {}
-
+void Chip8::OP_NULL() {
+    std::cerr << "Unimplemented or Unkown Opcode encountered: 0x"
+              << std::hex << opcode << std::dec << std::endl;
+}
 
 /**
  * @brief loads the contents of a ROM file into the CHIP-8 memory.
@@ -146,12 +150,21 @@ void Chip8::OP_NULL() {}
 void Chip8::loadROM(const char* filename) {
     // open the ROM file in binary mode and move the read pointer to the end of the file
     //  this is because of the BITWISE OR which will perform the operation of both flags
+    std::cerr << "[loadROM] filename=[" << filename << "] len=" << strlen(filename) << "\n";
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
 
     if (file.is_open()) {
         // get the size of the file and allocate a buffer to hold the contents
         std::streampos size = file.tellg();
-        char* buffer = new char[size];
+
+        // ensure that ROM isn't too big for CHIP-8 memory
+        if (size > (MEMORY_SIZE - START_ADDRESS)) {
+            std::cerr << "Error: ROM file is too large to fit in memory.\n";
+            file.close();
+            return;
+        }
+
+        char* buffer = new char[size]; // define a buffer
 
         // go back to the beginning of the file and fill the buffer
         file.seekg(0, std::ios::beg);
@@ -160,12 +173,13 @@ void Chip8::loadROM(const char* filename) {
 
         // load the ROM contents into the CHIP-8 memory starting from the start address
         for (long i = 0; i < size; i++)
-            memory[START_ADDRESS + i] = buffer[i];
+            memory[START_ADDRESS + i] = static_cast<uint8_t>(buffer[i]); // cast to uint8_t to ensure correct type
         delete[] buffer; // free the allocated buffer
     }
     else {
         // if the file could not be opened, print an error message
         std::cerr << "Error: Could not open ROM file " << filename << std::endl;
+        std::exit(EXIT_FAILURE);
     }
 }
 
