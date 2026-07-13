@@ -47,8 +47,9 @@ uint8_t fontset[FONTSET_SIZE] = // CHIP-8 font set (each character is 5 bytes)
  * Initializes the random number generator.
  * Sets up the opcode function pointer table.
  */
-Chip8::Chip8()
-    : randGen(std::chrono::system_clock::now().time_since_epoch().count())  
+Chip8::Chip8(Chip8Quirks quirks)
+    : quirks(quirks),
+      randGen(std::chrono::system_clock::now().time_since_epoch().count())
 {
     pc = START_ADDRESS; // Program counter starts at 0x200 address
 
@@ -171,9 +172,7 @@ void Chip8::loadROM(const char* filename) {
         file.read(buffer, size);
         file.close();
 
-        // load the ROM contents into the CHIP-8 memory starting from the start address
-        for (long i = 0; i < size; i++)
-            memory[START_ADDRESS + i] = static_cast<uint8_t>(buffer[i]); // cast to uint8_t to ensure correct type
+        LoadProgram(reinterpret_cast<const uint8_t*>(buffer), static_cast<size_t>(size));
         delete[] buffer; // free the allocated buffer
     }
     else {
@@ -181,6 +180,31 @@ void Chip8::loadROM(const char* filename) {
         std::cerr << "Error: Could not open ROM file " << filename << std::endl;
         std::exit(EXIT_FAILURE);
     }
+}
+
+bool Chip8::LoadProgram(const uint8_t* program, size_t size)
+{
+    if (program == nullptr || size > MEMORY_SIZE - START_ADDRESS) {
+        return false;
+    }
+
+    std::memcpy(memory + START_ADDRESS, program, size);
+    return true;
+}
+
+uint8_t Chip8::RegisterValue(uint8_t registerIndex) const
+{
+    return registerIndex < REGISTER_COUNT ? registers[registerIndex] : 0;
+}
+
+uint16_t Chip8::ProgramCounter() const
+{
+    return pc;
+}
+
+bool Chip8::IsMemoryRangeValid(uint16_t address, size_t length) const
+{
+    return static_cast<size_t>(address) + length <= MEMORY_SIZE;
 }
 
 // =======================================================================================
@@ -195,6 +219,11 @@ void Chip8::Cycle()
      * instruction in memory. To fetch the opcode, we read two consecutive bytes from
      * memory.
      */
+    if (!IsMemoryRangeValid(pc, 2)) {
+        std::cerr << "Program counter outside CHIP-8 memory: 0x" << std::hex << pc << std::dec << '\n';
+        return;
+    }
+
     opcode = (memory[pc] << 8u) | memory[pc + 1]; // combine two bytes to form the opcode
     pc += 2; // increment the program counter to point to the next instruction
 
@@ -206,8 +235,11 @@ void Chip8::Cycle()
      * We then call this function to execute the instruction.
      */
     ((*this).*(table[(opcode & 0xF000u) >> 12u]))(); // decode and execute the opcode
+}
 
-    // decrement timers if they are set
+void Chip8::UpdateTimers()
+{
+    // CHIP-8 timers run independently of CPU instructions, at 60 Hz.
     if (delayTimer > 0) {
         --delayTimer;
     }
@@ -239,6 +271,11 @@ void Chip8::OP_00E0()
  * Sets the program counter to the address at the top of the stack and decrements the stack pointer.
  */
 void Chip8::OP_00EE() {
+    if (sp == 0) {
+        std::cerr << "Stack underflow while returning from subroutine\n";
+        return;
+    }
+
     --sp; // decrement stack pointer
     pc = stack[sp]; // set program counter to the address at the top of the stack
 }
@@ -259,6 +296,11 @@ void Chip8::OP_1nnn() {
  */
 void Chip8::OP_2nnn() {
     uint16_t address = opcode & 0x0FFFu;
+
+    if (sp >= STACK_SIZE) {
+        std::cerr << "Stack overflow while calling subroutine\n";
+        return;
+    }
 
     stack[sp] = pc; // store current pc in stack
     ++sp; // increment stack pointer
@@ -418,9 +460,11 @@ void Chip8::OP_8xy5() {
  */
 void Chip8::OP_8xy6() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+    uint8_t value = quirks.shiftUsesVy ? registers[Vy] : registers[Vx];
 
-    registers[0xF] = registers[Vx] & 0x1u; // store the LSB of VX in VF
-    registers[Vx] >>= 1; // shift VX to the right by 1 bit
+    registers[0xF] = value & 0x1u; // store the LSB in VF
+    registers[Vx] = value >> 1; // shift into VX
 }
 
 /**
@@ -448,9 +492,11 @@ void Chip8::OP_8xy7() {
  */
 void Chip8::OP_8xyE() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
+    uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
+    uint8_t value = quirks.shiftUsesVy ? registers[Vy] : registers[Vx];
 
-    registers[0xF] = (registers[Vx] & 0x80u) >> 7u; // store the MSB of VX in VF
-    registers[Vx] <<= 1; // shift VX to the left by 1 bit
+    registers[0xF] = (value & 0x80u) >> 7u; // store the MSB in VF
+    registers[Vx] = value << 1; // shift into VX
 }
 
 /**
@@ -510,25 +556,41 @@ void Chip8::OP_Dxyn() {
     uint8_t Vy = (opcode & 0x00F0u) >> 4u; // extract Y from opcode
     uint8_t height = opcode & 0x000Fu; // extract N from opcode
 
-    uint8_t xPos = registers[Vx] % 64; // wrap around if xPos > 63 (screen width)
-    uint8_t yPos = registers[Vy] % 32; // wrap around if yPos > 31 (screen height)
+    uint8_t xPos = registers[Vx] % DISPLAY_WIDTH;
+    uint8_t yPos = registers[Vy] % DISPLAY_HEIGHT;
 
     registers[0xF] = 0; // reset VF (collision flag)
+
+    if (!IsMemoryRangeValid(index, height)) {
+        std::cerr << "Sprite data outside CHIP-8 memory\n";
+        return;
+    }
 
     for (unsigned int row = 0; row < height; ++row) {
         uint8_t spriteByte = memory[index + row]; // get the sprite byte from memory
 
-        for (unsigned int col = 0; col < 8; ++col) {
-            uint8_t spritePixel = spriteByte & (0x80u >> col); // extract the pixel from the sprite byte
-            uint32_t* screenPixel = &display[(yPos + row) * 64 + (xPos + col)];
+        for (unsigned int col = 0; col < 8; ++col)
+        {
+            const uint8_t spritePixel = spriteByte & (0x80u >> col);
 
-            if (spritePixel) { // if the pixel is set
+            const unsigned int rawX = xPos + col;
+            const unsigned int rawY = yPos + row;
+            if (!quirks.wrapSprites && (rawX >= DISPLAY_WIDTH || rawY >= DISPLAY_HEIGHT)) {
+                continue;
+            }
 
-                if (*screenPixel == 0xFFFFFFFF) { // if the screen pixel is already set
-                    registers[0xF] = 1; // set VF to indicate a collision
+            const uint8_t pixelX = rawX % DISPLAY_WIDTH;
+            const uint8_t pixelY = rawY % DISPLAY_HEIGHT;
+            uint32_t &screenPixel = display[pixelY * DISPLAY_WIDTH + pixelX];
+
+            if (spritePixel)
+            {
+                if (screenPixel == 0xFFFFFFFF)
+                {
+                    registers[0xF] = 1;
                 }
 
-                *screenPixel ^= 0xFFFFFFFF; // toggle the pixel on the screen
+                screenPixel ^= 0xFFFFFFFF;
             }
         }
     }
@@ -543,7 +605,7 @@ void Chip8::OP_Ex9E() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
     uint8_t key = registers[Vx];
 
-    if (keypad[key]) { // if the key is pressed
+    if (key < KEYPAD_SIZE && keypad[key]) { // if the key is pressed
         pc += 2; // skip next instruction
     }
 }
@@ -557,7 +619,7 @@ void Chip8::OP_ExA1() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
     uint8_t key = registers[Vx];
 
-    if (!keypad[key]) { // if the key is not pressed
+    if (key >= KEYPAD_SIZE || !keypad[key]) { // invalid keys cannot be pressed
         pc += 2; // skip next instruction
     }
 }
@@ -648,6 +710,11 @@ void Chip8::OP_Fx33() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
     uint8_t value = registers[Vx];
 
+    if (!IsMemoryRangeValid(index, 3)) {
+        std::cerr << "BCD destination outside CHIP-8 memory\n";
+        return;
+    }
+
     memory[index] = value / 100; // hundreds digit
     memory[index + 1] = (value / 10) % 10; // tens digit
     memory[index + 2] = value % 10; // units digit
@@ -660,8 +727,17 @@ void Chip8::OP_Fx33() {
 void Chip8::OP_Fx55() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
 
+    if (!IsMemoryRangeValid(index, static_cast<size_t>(Vx) + 1)) {
+        std::cerr << "Register store outside CHIP-8 memory\n";
+        return;
+    }
+
     for (uint8_t i = 0; i <= Vx; ++i) {
         memory[index + i] = registers[i]; // store registers V0 to VX in memory
+    }
+
+    if (quirks.loadStoreIncrementI) {
+        index += Vx + 1;
     }
 }
 
@@ -672,7 +748,16 @@ void Chip8::OP_Fx55() {
 void Chip8::OP_Fx65() {
     uint8_t Vx = (opcode & 0x0F00u) >> 8u; // extract X from opcode
 
+    if (!IsMemoryRangeValid(index, static_cast<size_t>(Vx) + 1)) {
+        std::cerr << "Register load outside CHIP-8 memory\n";
+        return;
+    }
+
     for (uint8_t i = 0; i <= Vx; ++i) {
         registers[i] = memory[index + i]; // read registers V0 to VX from memory
+    }
+
+    if (quirks.loadStoreIncrementI) {
+        index += Vx + 1;
     }
 }

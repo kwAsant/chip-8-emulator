@@ -9,6 +9,7 @@
  */
 
 #include <cstdint>
+#include <cstddef>
 #include <random>
 
 // define CONSTANTS
@@ -19,18 +20,30 @@ const unsigned int KEYPAD_SIZE = 16;   // Number of keys on the CHIP-8 keypad
 const unsigned int DISPLAY_WIDTH = 64; // Width of the CHIP-8 display in pixels
 const unsigned int DISPLAY_HEIGHT = 32; // Height of the CHIP-8
 
+struct Chip8Quirks
+{
+    bool shiftUsesVy = false;
+    bool loadStoreIncrementI = false;
+    bool wrapSprites = true;
+};
+
 // CHIP-8 Emulator Class Definition
 // This class represents the state of a Chip8 emulator, including its registers, memory, timers, and display.
 class Chip8
 {
 public:
-    Chip8();                            // Constructor to initialize the Chip8 system
+    explicit Chip8(Chip8Quirks quirks = {}); // Constructor to initialize the Chip8 system
     void loadROM(const char *filename); // Load a ROM file into memory
-    void Cycle();                // Execute one cycle of the fetch-decode-execute loop
+    bool LoadProgram(const uint8_t* program, size_t size); // Load a program already in memory
+    void Cycle();                       // Execute one fetch-decode-execute cycle
+    void UpdateTimers();                // Tick the delay and sound timers at 60 Hz
+    uint8_t RegisterValue(uint8_t index) const; // Read-only helper for tests and debuggers
+    uint16_t ProgramCounter() const;
 
     uint8_t keypad[KEYPAD_SIZE]{};        // 16 keys on the keypad
     uint32_t display[DISPLAY_WIDTH * DISPLAY_HEIGHT]{}; // 64x32 monochrome display memory
 private:
+    bool IsMemoryRangeValid(uint16_t address, size_t length) const;
     void Table0(); // Handle opcodes starting with 0
     void Table8(); // Handle opcodes starting with 8
     void TableE(); // Handle opcodes starting with E
@@ -81,6 +94,7 @@ private:
     uint8_t delayTimer{};    // 8-bit delay timer
     uint8_t soundTimer{};    // 8-bit sound timer
     uint16_t opcode{};       // Current opcode
+    Chip8Quirks quirks;
 
     std::default_random_engine randGen;              // Random number generator
     std::uniform_int_distribution<uint8_t> randByte; // Distribution to generate random bytes

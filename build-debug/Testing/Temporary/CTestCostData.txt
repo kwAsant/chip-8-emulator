@@ -1,0 +1,2 @@
+chip8_core_tests 1 0.951146
+---

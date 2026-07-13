@@ -1,0 +1,19 @@
+Start testing: Jul 13 17:57 BST
+----------------------------------------------------------
+1/1 Testing: chip8_core_tests
+1/1 Test: chip8_core_tests
+Command: "/Users/jodygyekye/Documents/workspace/fun_little_projects/chip-8 emulator/bin/chip8_tests"
+Directory: /Users/jodygyekye/Documents/workspace/fun_little_projects/chip-8 emulator/build-debug
+"chip8_core_tests" start time: Jul 13 17:57 BST
+Output:
+----------------------------------------------------------
+All CHIP-8 core tests passed.
+<end of output>
+Test time =   0.95 sec
+----------------------------------------------------------
+Test Passed.
+"chip8_core_tests" end time: Jul 13 17:57 BST
+"chip8_core_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jul 13 17:57 BST

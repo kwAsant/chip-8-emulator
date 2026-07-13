@@ -54,23 +54,50 @@ int main(int argc, char** argv)
     int displayPitch = DISPLAY_WIDTH * sizeof(chip8.display[0]); // Calculate the pitch for the display update
 
     // Timing variables for controlling the cycle rate
-    auto lastCycleTime = std::chrono::high_resolution_clock::now();
     bool running = true;
+
+    const float cpuDelayMs = static_cast<float>(config.delay); // Delay between CPU cycles, from the command line
+    constexpr float TIMER_DELAY_MS = 1000.0f / 60.0f; // Default delay in milliseconds for timers (60Hz)
+    constexpr float FRAME_DELAY_MS = 1000.0f / 60.0f; // Default delay in milliseconds for frame updates (60Hz)
+
+    auto lastCpuTime = std::chrono::high_resolution_clock::now();
+    auto lastTimerTime = lastCpuTime;
+    auto lastFrameTime = lastCpuTime;
 
     while (running)
     {
         // Process input and update the keypad state
         running = !platform.ProcessInput(chip8.keypad); // because it is using a different type of flag which returns if the program should quit
 
-        // Control the speed of execution based on the specified delay
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float elapsedTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - lastCycleTime).count();
+        const auto currentTime = std::chrono::high_resolution_clock::now();
+        const float elapsedTime = std::chrono::duration<float, std::chrono::milliseconds::period>(currentTime - lastCpuTime).count();
 
-        if (elapsedTime > config.delay)
+        if (elapsedTime >= cpuDelayMs)
         {
-            lastCycleTime = currentTime;
+            lastCpuTime = currentTime;
             chip8.Cycle(); // Execute one cycle of the Chip8 CPU
-            platform.Update(chip8.display, displayPitch); // Update the display with the current framebuffer
+        }
+
+        const float timerElapsed =
+            std::chrono::duration<float, std::chrono::milliseconds::period>(
+                currentTime - lastTimerTime)
+                .count();
+
+        if (timerElapsed >= TIMER_DELAY_MS)
+        {
+            lastTimerTime = currentTime;
+            chip8.UpdateTimers();
+        }
+
+        const float frameElapsed =
+            std::chrono::duration<float, std::chrono::milliseconds::period>(
+                currentTime - lastFrameTime)
+                .count();
+
+        if (frameElapsed >= FRAME_DELAY_MS)
+        {
+            lastFrameTime = currentTime;
+            platform.Update(chip8.display, displayPitch);
         }
     }
     return 0;
